@@ -1,103 +1,4 @@
-#!/usr/bin/env python3
-"""
-compile_report.py
-=================
-Compila el informe unificado de los experimentos numéricos.
-Carga resultados de exp01 y exp02, genera un PDF con LaTeX.
-"""
-import os, sys, json, subprocess, glob
-from datetime import datetime
-
-PROJECT = "/home/radxa/Research/TFM-Advanced Mathematics"
-EXP01_DIR = os.path.join(PROJECT, "experiments", "figures", "exp01")
-EXP02_DIR = os.path.join(PROJECT, "experiments", "figures", "exp02")
-OUTPUT_DIR = os.path.join(PROJECT, "experiments")
-
-# ---------- cargar resultados ----------
-results_exp01 = {}
-results_exp02 = {}
-try:
-    with open(os.path.join(EXP01_DIR, "results.json")) as f:
-        results_exp01 = json.load(f)
-    print("✓ Resultados Exp01 cargados")
-except Exception as e:
-    print(f"⚠ No se pudieron cargar resultados Exp01: {e}")
-
-try:
-    with open(os.path.join(EXP02_DIR, "results.json")) as f:
-        results_exp02 = json.load(f)
-    print("✓ Resultados Exp02 cargados")
-except Exception as e:
-    print(f"⚠ No se pudieron cargar resultados Exp02: {e}")
-
-# ---------- tablas ----------
-def build_clt_table(results):
-    lines = []
-    lines.append(r"\begin{table}[H]")
-    lines.append(r"\centering")
-    lines.append(r"\caption{Convergencia CLT: métricas vs ancho de la red}")
-    lines.append(r"\label{tab:clt_convergence}")
-    lines.append(r"\begin{tabular}{crrrrrr}")
-    lines.append(r"\toprule")
-    lines.append(r"$n$ & $|\mu|$ & $\sigma^2$ & Skewness & Kurtosis & KL & KS \\")
-    lines.append(r"\midrule")
-    
-    for n_str in sorted([k for k in results.keys() if k != 'nngp_kernel_xx'],
-                         key=lambda x: int(x)):
-        if n_str == 'nngp_kernel_xx':
-            continue
-        r = results[n_str]
-        mu = abs(float(r['mu']))
-        var = float(r['var'])
-        skew = float(r['skew'])
-        kurt = float(r['kurt'])
-        kl = float(r['kl'])
-        ks = float(r['ks_stat'])
-        lines.append(f"    {int(n_str):5d} & {mu:.5f} & {var:.5f} & {skew:+.4f} & {kurt:+.4f} & {kl:.4e} & {ks:.4f} \\\\")
-    
-    lines.append(r"\bottomrule")
-    lines.append(r"\end{tabular}")
-    lines.append(r"\end{table}")
-    return "\n".join(lines)
-
-def build_kernel_table(results):
-    lines = []
-    lines.append(r"\begin{table}[H]")
-    lines.append(r"\centering")
-    lines.append(r"\caption{Error relativo del kernel empírico de salida vs NNGP teórico}")
-    lines.append(r"\label{tab:kernel_errors}")
-    lines.append(r"\begin{tabular}{crr}")
-    lines.append(r"\toprule")
-    lines.append(r"$n$ & $\varepsilon_F$(NNGP) & $\varepsilon_F$(NTK empírico) \\")
-    lines.append(r"\midrule")
-    
-    widths = results.get('widths', [])
-    for n in widths:
-        n_str = str(n)
-        err_nngp = float(results['errors_nngp'].get(n_str, 0))
-        err_ntk_emp = float(results['errors_ntk_emp'].get(n_str, 0))
-        lines.append(f"    {n:5d} & {err_nngp:.5f} & {err_ntk_emp:.5f} \\\\")
-    
-    lines.append(r"\bottomrule")
-    lines.append(r"\end{tabular}")
-    lines.append(r"\end{table}")
-    return "\n".join(lines)
-
-# ---------- generar .tex ----------
-timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
-fig_rel = "experiments/figures"
-
-# Mover figuras a la raíz del proyecto para que LaTeX pueda encontrarlas
-# o usar rutas relativas
-# Mejor: usar rutas absolutas en LaTeX con \graphicspath{{./}}
-# Pero como LaTeX se ejecuta desde el directorio del proyecto, las rutas 
-# relativas a experiments/figures/ funcionarán.
-
-clt_table = build_clt_table(results_exp01) if results_exp01 else ""
-kernel_table = build_kernel_table(results_exp02) if results_exp02 else ""
-
-latex_content = r"""\documentclass[11pt,a4paper]{article}
+\documentclass[11pt,a4paper]{article}
 
 %% ---- Encoding and fonts ----
 \usepackage[utf8]{inputenc}
@@ -212,7 +113,25 @@ La Figura~\ref{fig:convergence_metrics} muestra la evolución de diversas métri
 
 \subsection{Tabla de resultados}
 
-""" + clt_table + r"""
+\begin{table}[H]
+\centering
+\caption{Convergencia CLT: métricas vs ancho de la red}
+\label{tab:clt_convergence}
+\begin{tabular}{crrrrrr}
+\toprule
+$n$ & $|\mu|$ & $\sigma^2$ & Skewness & Kurtosis & KL & KS \\
+\midrule
+        1 & 0.00118 & 1.01388 & +0.0880 & +15.3759 & 8.5476e-01 & 0.2542 \\
+        5 & 0.00518 & 1.00543 & -0.0427 & +2.9530 & 9.1492e-02 & 0.0699 \\
+       10 & 0.00062 & 1.00579 & +0.0104 & +1.6318 & 2.8948e-02 & 0.0378 \\
+       50 & 0.00003 & 1.00033 & -0.0146 & +0.2686 & 3.3194e-03 & 0.0083 \\
+      100 & 0.01403 & 1.00491 & -0.0223 & +0.1846 & 3.1925e-03 & 0.0106 \\
+      500 & 0.01448 & 1.01182 & +0.0213 & +0.0589 & 4.0990e-03 & 0.0113 \\
+     1000 & 0.00526 & 0.99027 & +0.0174 & +0.0033 & 4.4425e-03 & 0.0062 \\
+     5000 & 0.00467 & 1.01222 & -0.0180 & -0.0713 & 4.4225e-03 & 0.0068 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Q-Q plots}
 
@@ -303,7 +222,25 @@ La Figura~\ref{fig:ntk_diff} muestra la diferencia entre ambos kernels.
 \label{fig:ntk_diff}
 \end{figure}
 
-""" + kernel_table + r"""
+\begin{table}[H]
+\centering
+\caption{Error relativo del kernel empírico de salida vs NNGP teórico}
+\label{tab:kernel_errors}
+\begin{tabular}{crr}
+\toprule
+$n$ & $\varepsilon_F$(NNGP) & $\varepsilon_F$(NTK empírico) \\
+\midrule
+        1 & 0.21418 & 0.62380 \\
+        5 & 0.10288 & 0.50361 \\
+       10 & 0.11589 & 0.50038 \\
+       50 & 0.08530 & 0.48498 \\
+      100 & 0.03839 & 0.51942 \\
+      500 & 0.08753 & 0.50853 \\
+     1000 & 0.07644 & 0.50723 \\
+     2000 & 0.07496 & 0.50650 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Conclusiones}
@@ -331,65 +268,7 @@ Los experimentos numéricos confirman los siguientes resultados teóricos:
   \item \textbf{Lenguaje:} Python 3.11 con NumPy, SciPy y Matplotlib.
   \item \textbf{Arquitectura:} Una capa oculta con activación ReLU, dimensión de entrada $d=50$ (Exp1) y $d=20$ (Exp2), pesos $\sigma_w=1$, sesgos $\sigma_b=1$.
   \item \textbf{Muestreo:} $8\,000$--$50\,000$ muestras Monte Carlo para Exp1; hasta $1\,000$ ensambles para promedio de kernel en Exp2, minimizando $200$ por ancho.
-  \item \textbf{Compilación:} \texttt{pdflatex}, informe generado el """ + timestamp + r""".
+  \item \textbf{Compilación:} \texttt{pdflatex}, informe generado el 2026-06-07 06:04 UTC.
 \end{itemize}
 
 \end{document}
-"""
-
-# ---------- escribir .tex ----------
-tex_path = os.path.join(OUTPUT_DIR, "06_Experimental_Report.tex")
-with open(tex_path, 'w') as f:
-    f.write(latex_content)
-print(f"✓ {tex_path} escrito")
-
-# ---------- compilar PDF ----------
-print("\nCompilando PDF con pdflatex...")
-os.chdir(PROJECT)  # para que las rutas relativas funcionen
-
-# Primera pasada
-result = subprocess.run(
-    ['pdflatex', '-interaction=nonstopmode', '-output-directory', OUTPUT_DIR, tex_path],
-    capture_output=True, text=True, timeout=120
-)
-
-if result.returncode != 0:
-    # Buscar errores
-    errors = [l for l in result.stdout.split('\n') if l.startswith('!')]
-    if errors:
-        print(f"⚠ Errores de LaTeX en primera pasada:")
-        for e in errors[:5]:
-            print(f"   {e}")
-    # Segunda pasada para referencias cruzadas
-    result2 = subprocess.run(
-        ['pdflatex', '-interaction=nonstopmode', '-output-directory', OUTPUT_DIR, tex_path],
-        capture_output=True, text=True, timeout=120
-    )
-    # Tercera pasada por si acaso
-    result3 = subprocess.run(
-        ['pdflatex', '-interaction=nonstopmode', '-output-directory', OUTPUT_DIR, tex_path],
-        capture_output=True, text=True, timeout=120
-    )
-else:
-    # Segunda pasada
-    result2 = subprocess.run(
-        ['pdflatex', '-interaction=nonstopmode', '-output-directory', OUTPUT_DIR, tex_path],
-        capture_output=True, text=True, timeout=120
-    )
-
-# Buscar PDF
-pdf_path = os.path.join(OUTPUT_DIR, "06_Experimental_Report.pdf")
-if os.path.exists(pdf_path):
-    size_kb = os.path.getsize(pdf_path) / 1024
-    print(f"\n✓ PDF generado exitosamente: {pdf_path}")
-    print(f"  Tamaño: {size_kb:.1f} KB")
-else:
-    print(f"\n⚠ No se encontró el PDF en {pdf_path}")
-    # Intentar buscar con otro nombre
-    for f in os.listdir(OUTPUT_DIR):
-        if f.endswith('.pdf'):
-            pdf_path = os.path.join(OUTPUT_DIR, f)
-            print(f"  → Encontrado: {pdf_path}")
-            break
-
-print("\nCompilación completada.")
